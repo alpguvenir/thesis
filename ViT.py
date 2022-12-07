@@ -1,3 +1,5 @@
+# # Code from https://github.com/lucidrains/vit-pytorch/tree/main/vit_pytorch
+
 import torch
 from torch import nn
 

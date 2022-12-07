@@ -1,3 +1,5 @@
+# Code from https://github.com/mateuszbuda/brain-segmentation-pytorch/blob/master/unet.py
+
 import torch
 import torch.nn as nn
 from collections import OrderedDict
