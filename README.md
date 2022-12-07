@@ -2,7 +2,7 @@
 
 ## NoduleMNIST3D UNet
 ```diff
--run &rarr; python nodulemnist3d_unet.py
++ run &rarr; python nodulemnist3d_unet.py
 ```
 
 This will create a folder in syntax unet-results-'timestamp' in the upper directory
@@ -17,7 +17,7 @@ This will create a folder in syntax unet-results-'timestamp' in the upper direct
 Move the best unet weights to outside of the unet-results-'timestamp' folder
 
 ```diff
--run &rarr; python nodulemnist3d_vit.py
++ run &rarr; python nodulemnist3d_vit.py
 ````
 
 This will create a folder in syntax vit-results-'timestamp' in the upper directory
@@ -34,7 +34,7 @@ This will create a folder in syntax vit-results-'timestamp' in the upper directo
 Move the best vit weights to outside of the vit-results-'timestamp' folder
 
 ```diff
--run &rarr; python nodulemnist3d_unet_vit_test.py
++ run &rarr; python nodulemnist3d_unet_vit_test.py
 ````
 
 This will create a folder in syntax unet-vit-results-'timestamp' in the upper directory
