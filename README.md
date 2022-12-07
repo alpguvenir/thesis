@@ -1,7 +1,7 @@
 # thesis
 
 ## NoduleMNIST3D UNet
->>> python nodulemnist3d_unet.py
+&rarr; python nodulemnist3d_unet.py
 
 This will create a folder in syntax unet-results-'timestamp' in the upper directory
 
