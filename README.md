@@ -1,5 +1,7 @@
 # thesis
 
+Use **environment-dev1.yml** to create an environment
+
 ## NoduleMNIST3D UNet
 ```diff
 + >> python nodulemnist3d_unet.py
