@@ -27,7 +27,7 @@ dt = datetime.now()
 # getting the timestamp
 ts = int(datetime.timestamp(dt))
 
-outputs_folder = "vit-results-" + str(ts)
+outputs_folder = "../vit-results-" + str(ts)
 if not os.path.exists(outputs_folder):
     os.makedirs(outputs_folder)
 
@@ -116,7 +116,7 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 # initialize Unet model
 unet = UNet()
 unet.to(torch.double)
-unet.load_state_dict(torch.load('./model1.pth'))
+unet.load_state_dict(torch.load('../model1.pth'))
 
 # use gpu if exists
 unet.to(device)
