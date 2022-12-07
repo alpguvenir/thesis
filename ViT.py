@@ -125,6 +125,22 @@ class ViT(nn.Module):
         )
 
     def forward(self, features):
+        """
+        dim = 512, 
+
+        For an input of batch 1, channel 1, height 28, width 28
+        when patch size is 1 x 1
+        to_patch_embedding() returns
+        [1, 784, dim] --> 784 = (28 / 1) * (28 / 1)
+
+        For an input of batch 1, channel 1, height 28, width 28
+        when patch size is 2 x 2
+        to_patch_embedding() returns
+        [1, 196, dim] --> 196 = (28 / 2) * (28 / 2)
+
+        Since we are able to represent a single layer by a bottleneck of 1 x 512
+        for each layer creating these would lead to [1, 28, dim]
+        """
         #print("VIT - features shape", features.shape)
 
         #x = self.to_patch_embedding(img)
