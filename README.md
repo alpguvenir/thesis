@@ -1,6 +1,9 @@
-# thesis
+# Thesis
 
 Use **environment-dev1.yml** to create an environment
+```diff
++ conda env create --file sample.yml
+```
 
 ## NoduleMNIST3D UNet
 ```diff
