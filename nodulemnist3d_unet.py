@@ -25,7 +25,7 @@ dt = datetime.now()
 # getting the timestamp
 ts = int(datetime.timestamp(dt))
 
-outputs_folder = "unet-results-" + str(ts)
+outputs_folder = "../unet-results-" + str(ts)
 if not os.path.exists(outputs_folder):
     os.makedirs(outputs_folder)
 
@@ -192,11 +192,11 @@ for epoch in range(NUM_EPOCHS):
             fig.add_subplot(rows, columns, 2)
             plt.imshow(outputs[10][0][:,:], cmap='gray')
 
-            input_output_folder = "unet-results-" + str(ts) + "/epoch" + str(epoch)
-            if not os.path.exists(input_output_folder):
-                os.makedirs(input_output_folder)
+            epoch_outputs_folder = outputs_folder + "/epoch" + str(epoch)
+            if not os.path.exists(epoch_outputs_folder):
+                os.makedirs(epoch_outputs_folder)
                 
-            plt.savefig(input_output_folder + "/" + "counter" + str(counter) + ".png")
+            plt.savefig(epoch_outputs_folder + "/" + "counter" + str(counter) + ".png")
             plt.close()
 
             model.train()
@@ -258,7 +258,7 @@ for epoch in range(NUM_EPOCHS):
             fig.add_subplot(rows, columns, 2)
             plt.imshow(val_outputs[10][0][:,:], cmap='gray')
                 
-            plt.savefig(input_output_folder + "/" + "val_counter" + str(val_counter) + ".png")
+            plt.savefig(epoch_outputs_folder + "/" + "val_counter" + str(val_counter) + ".png")
             plt.close()
 
         val_counter += 1
