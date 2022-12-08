@@ -8,6 +8,8 @@ import torchvision.transforms as transforms
 from torchvision import models
 
 import torchmetrics
+from collections import Counter
+
 
 from matplotlib import pyplot as plt
 from collections import OrderedDict
@@ -86,8 +88,7 @@ print("test data size: ", len(test_dataset))
 class AttentionClassifier(nn.Module):
     def __init__(self):
         super().__init__()
-        hidden_size1 = 128
-        hidden_size2 = 64
+        hidden_size1 = 256
         feature_extractor = models.resnet.resnet18(pretrained=True)
         feature_extractor.fc = (
             nn.Linear(512, hidden_size1) if hidden_size1 != 512 else nn.Identity()
@@ -97,11 +98,7 @@ class AttentionClassifier(nn.Module):
         )
         self.feature_extractor = feature_extractor
         self.att = nn.MultiheadAttention(hidden_size1, 8)
-        self.classifier = nn.Sequential(
-            nn.Linear(hidden_size1, hidden_size2),
-            nn.LeakyReLU(),
-            nn.Linear(hidden_size2, 1),
-        )
+        self.classifier = nn.Linear(hidden_size1, 1)
 
         print(f"Feature extractor has {get_params(self.feature_extractor)} params")
         print(f"Attention has {get_params(self.att)} params")
@@ -124,7 +121,7 @@ class AttentionClassifier(nn.Module):
 model = AttentionClassifier()
 sigmoid = nn.Sigmoid()
 
-print(f"Model has {get_params(model)} params")
+print(f"Complete model has {get_params(model)} params")
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 model.to(device)
@@ -132,11 +129,12 @@ model.to(device)
 # criterion = nn.CrossEntropyLoss()
 criterion = nn.BCEWithLogitsLoss()
 optimizer = optim.Adam(model.parameters(), lr=lr)
+sched = optim.lr_scheduler.MultiStepLR(optimizer, milestones=[3, 4], gamma=0.01)
 
 data_sample, data_label = train_dataset[0]
 preprocess_data = lambda x: x.squeeze().unsqueeze(1).float()
 data_sample = preprocess_data(torch.from_numpy(data_sample))
-print(data_sample.shape)
+# print(data_sample.shape)
 model(data_sample.to(device))
 
 # pbar_epoch = tqdm(range(NUM_EPOCHS), total=NUM_EPOCHS)
@@ -144,6 +142,25 @@ for epoch in range(NUM_EPOCHS):
     print(f"Epoch: {epoch}")
     total_loss = 0
     model.train()
+    if epoch == 0:
+        model.feature_extractor.eval()
+        for param in model.feature_extractor.parameters():
+            param.requires_grad = False
+        model.feature_extractor.conv1[0].weight.requires_grad = True
+        model.feature_extractor.conv1[0].bias.requires_grad = True
+    elif epoch == 1:
+        model.feature_extractor.eval()
+    elif epoch == 2:
+        pass
+    elif epoch == 3:
+        for param in model.feature_extractor.layer4.parameters():
+            param.requires_grad = True
+    elif epoch == 4:
+        for param in model.feature_extractor.layer3.parameters():
+            param.requires_grad = True
+    elif epoch > 4:
+        for param in model.parameters():
+            param.requires_grad = True
     pbar_train_loop = tqdm(train_loader, total=len(train_loader), leave=False)
     for input, target in pbar_train_loop:
         optimizer.zero_grad()
@@ -155,7 +172,7 @@ for epoch in range(NUM_EPOCHS):
         total_loss += lv
         pbar_train_loop.set_description_str(f"Loss: {lv:.2f}")
     print(f"\tMean train loss: {total_loss / ((epoch + 1)*len(train_loader)):.2f}")
-
+    sched.step()
     model.eval()
     preds, targets = [], []
     with torch.no_grad():
@@ -164,9 +181,11 @@ for epoch in range(NUM_EPOCHS):
             preds.append(sigmoid(out.cpu().flatten()))
             targets.append(target.flatten())
     preds, targets = torch.cat(preds), torch.cat(targets)
-    acc = torchmetrics.functional.accuracy(preds, targets, task='binary')
+    acc = torchmetrics.functional.accuracy(preds, targets, task="binary")
     mcc = torchmetrics.functional.classification.binary_matthews_corrcoef(
-        preds, targets, 
+        preds,
+        targets,
     )
+    # print(f"\tLabel distribution: {Counter(targets.tolist())}")
     print(f"\tVal accuracy: {acc*100.0:.1f}%")
     print(f"\tVal MCC: {mcc*100.0:.1f}%")
