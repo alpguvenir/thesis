@@ -1,0 +1,16 @@
+name: attention
+channels: 
+  - pytorch
+  - conda-forge
+dependencies: 
+  - pytorch::pytorch
+  - pytorch::torchvision
+  - conda-forge::cudatoolkit
+  - conda-forge::torchmetrics
+  - conda-forge::matplotlib
+  - conda-forge::black
+  - pip
+  - pip:
+    - medmnist
+    - tqdm
+    - datetime
