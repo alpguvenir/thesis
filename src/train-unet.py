@@ -17,7 +17,7 @@ from matplotlib import pyplot as plt
 from tqdm import tqdm
 
 from dataset import dataset
-from UNet import UNet
+from model.UNet import UNet
 
 
 # Getting the current date and time

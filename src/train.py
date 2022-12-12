@@ -15,7 +15,7 @@ import pandas as pd
 from tqdm import tqdm
 
 from dataset import dataset
-from UNet import UNet
+from model import UNet
 
 def get_file_paths(path):
     return glob.glob(path + "/*")
