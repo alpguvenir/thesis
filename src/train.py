@@ -17,6 +17,24 @@ from tqdm import tqdm
 from dataset import dataset
 from model import UNet
 
+
+list = [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22]
+new_list = []
+slices = 30
+divider = 0
+
+for i in range(0,slices):
+    print(i)
+
+for i in range(0,slices):
+    divider += len(list) / slices
+    new_list.append(int(divider))
+
+print(new_list)
+
+exit()
+
+
 def get_file_paths(path):
     return glob.glob(path + "/*")
 

@@ -6,10 +6,11 @@ import torch.optim as optim
 import torch.utils.data as data
 import torchvision.transforms as transforms
 from torchvision import models
+from torch.utils.data import DataLoader
 
 import torchmetrics
 from collections import Counter
-
+import pandas as pd
 
 from matplotlib import pyplot as plt
 from collections import OrderedDict
@@ -17,12 +18,10 @@ from collections import OrderedDict
 from datetime import datetime
 import os
 from typing import Optional, Tuple
+import yaml
+import glob
 
-
-import medmnist
-from medmnist import INFO, Evaluator
-
-print("MedMNIST", "v", medmnist.__version__, "@", medmnist.HOMEPAGE)
+from dataset import dataset
 
 
 # Getting the current date and time
@@ -31,50 +30,72 @@ dt = datetime.now()
 # getting the timestamp
 ts = int(datetime.timestamp(dt))
 
+outputs_folder = "../layer-attention-results-realdata-" + str(ts)
+if not os.path.exists(outputs_folder):
+    os.makedirs(outputs_folder)
+
+def get_file_paths(path):
+    return glob.glob(path + "/*")
+
 
 NUM_EPOCHS = 10
 lr = 0.001
 
 
-# assign dataset name to data_flag
-data_flag = "nodulemnist3d"
-download = True
-
-info = INFO[data_flag]
-task = info["task"]
-n_channels = info["n_channels"]
-n_classes = len(info["label"])
+with open('parameters.yml') as params:
+    params_dict = yaml.safe_load(params)
 
 
-# print information about dataset
-print("Task on this dataset is", task)
-print("Number of channels", n_channels)
-print("Number of classes", n_classes)
+# Lists for containing pseudoname of the patient at its class label
+ct_scan_list = []
+ct_label_list = []
+
+# Read 
+ct_file_paths = get_file_paths(params_dict.get("cts.directory"))
+ct_labels_path = params_dict.get("cst.label.csv")
+ct_labels_exclude_path = params_dict.get("cts.label.problematic")
 
 
-DataClass = getattr(medmnist, info["python_class"])
+ct_labels_df = pd.read_csv(ct_labels_path, index_col=0)
+ct_labels_exclude_df = pd.read_csv(ct_labels_exclude_path, index_col=False)
 
 
-# load the data for different splits
-train_dataset = DataClass(split="train", download=download)
-val_dataset = DataClass(split="val", download=download)
-test_dataset = DataClass(split="test", download=download)
+for ct_file in ct_file_paths:
+    ct_file_name = os.path.basename(ct_file)
+
+    # If the patient name exists only once in pseudonymised_patient_info.csv
+    if len(ct_labels_df.index[ct_labels_df['Pseudonym'] == ct_file_name[:-4]].tolist()) == 1:
+        
+        ct_index = ct_labels_df.index[ct_labels_df['Pseudonym'] == ct_file_name[:-4]].tolist()[0]
+
+        # If the patient name is not in Problematic_CTs
+        if len(ct_labels_exclude_df.index[ct_labels_exclude_df['Patient_name'] == ct_file_name[:-4]].tolist()) == 0:
+            ct_scan_list.append(ct_file)
+            ct_label_list.append(ct_labels_df.loc[ct_index]['Geschlecht'])
+            
+
+transforms = {
+                'Clip': {'amin': -150, 'amax': 250},
+
+                # Normalize so the values are between 0 and 1
+                'Normalize': {'bounds': [-150, 250]},
+
+                'Resize': {'height': 256, 'width': 256},
+
+                'Crop-Height' : {'begin': 0, 'end': 256},
+                'Crop-Width' : {'begin': 0, 'end': 256},
+
+                'Max-Layers' : {'max': 700}
+             }
 
 
-# encapsulate data into dataloader form
-train_loader = data.DataLoader(
-    dataset=train_dataset,
-    batch_size=1,
-    num_workers=4,
-    pin_memory=True,  # prefetch_factor=4
-)  # turn shuffle=True after debugging
-val_loader = data.DataLoader(
-    dataset=val_dataset,
-    batch_size=1,
-    num_workers=4,
-    pin_memory=True,  # prefetch_factor=4
-)
-test_loader = data.DataLoader(dataset=test_dataset, batch_size=1)
+train_dataset = dataset.Dataset(ct_scan_list[:700], ct_label_list[:700], transforms=transforms)
+val_dataset = dataset.Dataset(ct_scan_list[600:700], ct_label_list[600:700], transforms=transforms)
+test_dataset = dataset.Dataset(ct_scan_list[700:], ct_label_list[700:], transforms=transforms)
+
+
+train_loader = DataLoader(dataset=train_dataset, batch_size=1)
+val_loader = DataLoader(dataset=val_dataset, batch_size=1)
 
 
 get_params = lambda m: sum(p.numel() for p in m.parameters())
@@ -131,11 +152,26 @@ criterion = nn.BCEWithLogitsLoss()
 optimizer = optim.Adam(model.parameters(), lr=lr)
 sched = optim.lr_scheduler.MultiStepLR(optimizer, milestones=[3, 4], gamma=0.01)
 
+"""
 data_sample, data_label = train_dataset[0]
+
+print(data_sample.shape)
+print(data_label)
+
+data_sample = data_sample.permute(2, 0, 1, 3, 4)
+data_sample = torch.squeeze(data_sample, 1)
+
+print(data_sample.shape)
+print(data_label)
+
+exit()
+
 preprocess_data = lambda x: x.squeeze().unsqueeze(1).float()
 data_sample = preprocess_data(torch.from_numpy(data_sample))
 # print(data_sample.shape)
 model(data_sample.to(device))
+"""
+
 
 # pbar_epoch = tqdm(range(NUM_EPOCHS), total=NUM_EPOCHS)
 for epoch in range(NUM_EPOCHS):
@@ -164,8 +200,13 @@ for epoch in range(NUM_EPOCHS):
     pbar_train_loop = tqdm(train_loader, total=len(train_loader), leave=False)
     for input, target in pbar_train_loop:
         optimizer.zero_grad()
-        out = model(preprocess_data(input).to(device))
-        loss = criterion(out, target.float().to(device))
+
+        
+        input = input.permute(2, 0, 1, 3, 4)
+        input = torch.squeeze(input, 1)
+
+        out = model(input.to(device))
+        loss = criterion(out, torch.unsqueeze(target, 0).float().to(device))
         loss.backward()
         optimizer.step()
         lv = loss.detach().cpu().item()
@@ -177,15 +218,14 @@ for epoch in range(NUM_EPOCHS):
     preds, targets = [], []
     with torch.no_grad():
         for input, target in tqdm(val_loader, leave=False):
-            out = model(preprocess_data(input).to(device))
+
+            input = input.permute(2, 0, 1, 3, 4)
+            input = torch.squeeze(input, 1)
+
+            out = model(input.to(device))
+
             preds.append(sigmoid(out.cpu().flatten()))
             targets.append(target.flatten())
-
-            print(preds)
-            print(targets)
-
-            exit()
-
     preds, targets = torch.cat(preds), torch.cat(targets)
     acc = torchmetrics.functional.accuracy(preds, targets, task="binary")
     mcc = torchmetrics.functional.classification.binary_matthews_corrcoef(
@@ -195,3 +235,5 @@ for epoch in range(NUM_EPOCHS):
     # print(f"\tLabel distribution: {Counter(targets.tolist())}")
     print(f"\tVal accuracy: {acc*100.0:.1f}%")
     print(f"\tVal MCC: {mcc*100.0:.1f}%")
+    path_model = outputs_folder + "/model" + str(epoch) + ".pth"
+    torch.save(model.state_dict(), path_model)

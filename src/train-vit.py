@@ -18,6 +18,8 @@ from tqdm import tqdm
 
 from dataset import dataset
 from model.UNet import UNet
+from model.ViT import ViT
+
 
 # Getting the current date and time
 dt = datetime.now()
@@ -25,7 +27,7 @@ dt = datetime.now()
 # getting the timestamp
 ts = int(datetime.timestamp(dt))
 
-outputs_folder = "../unet-results-realdata-" + str(ts)
+outputs_folder = "../vit-results-realdata-" + str(ts)
 if not os.path.exists(outputs_folder):
     os.makedirs(outputs_folder)
 
@@ -36,7 +38,6 @@ def get_file_paths(path):
 NUM_EPOCHS = 10
 BATCH_SIZE = 1
 lr = 0.001
-
 
 with open('parameters.yml') as params:
     params_dict = yaml.safe_load(params)
@@ -107,27 +108,46 @@ test_dataset = dataset.Dataset(ct_scan_list[700:], ct_label_list[700:], transfor
 #val_dataset = dataset.Dataset(ct_scan_list[700:726] + ct_scan_list[727:789] + ct_scan_list[790:], ct_label_list[700:726] + ct_label_list[727:789] + ct_label_list[790:], transforms=transforms)
 #val_dataset = dataset.Dataset(ct_scan_list[700:789] + ct_scan_list[790:], ct_label_list[700:789] + ct_label_list[790:], transforms=transforms)
 
+
 train_loader = DataLoader(dataset=train_dataset, batch_size=1)
 val_loader = DataLoader(dataset=val_dataset, batch_size=1)
 
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-# initialize model
-model = UNet()
-#model.to(torch.double)
+
+# initialize Unet model
+unet = UNet()
+unet.load_state_dict(torch.load('model9.pth'))
 
 # use gpu if exists
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+unet.to(device)
+unet.eval()
+
+
+# initialize ViT model
+model = ViT(
+    dim=512,
+    num_patches=55,
+    patch_dim=512,
+    num_classes=2,
+    channels=1,
+    depth = 6,
+    heads = 16,
+    mlp_dim = 2048
+)
+
+# use gpu if exists
 model.to(device)
 
 # loss and optimizer
-criterion = nn.L1Loss()
-optimizer = optim.SGD(model.parameters(), lr=lr, momentum=0.9)
+#criterion = nn.CrossEntropyLoss()
+criterion = nn.BCELoss()
 sigmoid = nn.Sigmoid()
+optimizer = optim.Adam(model.parameters(), lr=lr)
 
 # loss calculation
 train_loss_array = []
 val_loss_array = []
-
 
 for epoch in range(NUM_EPOCHS):
     counter = 0
@@ -142,48 +162,33 @@ for epoch in range(NUM_EPOCHS):
         #inputs = sigmoid(inputs)
 
         inputs = inputs.to(device)
+
+        features_extracted, _ = unet(inputs)
+
+        features_extracted = features_extracted.permute(2, 3, 0, 1)
+        features_extracted = torch.squeeze(features_extracted, 0)
+        
         optimizer.zero_grad()
 
-        _, outputs = model(inputs)
+        outputs = model(features_extracted)
 
-        loss = criterion(outputs, inputs)
+        outputs = sigmoid(outputs)
+        labels = targets
+        
+        labels = labels.to(device)
+        labels = torch.unsqueeze(labels, 0).to(torch.float)
+
+        loss = criterion(outputs, labels)
         total_loss += loss.item()
 
         loss.backward()
         optimizer.step()
 
+        if(counter%100 == 0):
+            print("outputs", outputs)
+            print("labels", labels)
+            print("loss", loss)
 
-        # evaluate model outputs
-        # in every 300th instance check the progress
-        if(counter%300 == 0):
-            model.eval()
-            _, outputs = model(inputs)
-            
-            inputs = inputs.to("cpu")
-            outputs = outputs.to("cpu")
-
-            inputs = inputs.detach().numpy()
-            outputs = outputs.detach().numpy()
-
-            columns = 2
-            rows = 1
-            
-            fig = plt.figure(figsize=(20, 20))
-            fig.add_subplot(rows, columns, 1)
-            plt.imshow(inputs[10][0][:,:], cmap='gray')
-            
-            fig.add_subplot(rows, columns, 2)
-            plt.imshow(outputs[10][0][:,:], cmap='gray')
-
-            epoch_outputs_folder = outputs_folder + "/epoch" + str(epoch)
-            if not os.path.exists(epoch_outputs_folder):
-                os.makedirs(epoch_outputs_folder)
-                
-            plt.savefig(epoch_outputs_folder + "/" + "counter" + str(counter) + ".png")
-            plt.close()
-
-            model.train()
-        
         counter += 1
 
     train_loss_array.append((total_loss * 1.0 / len(train_dataset)))
@@ -196,33 +201,27 @@ for epoch in range(NUM_EPOCHS):
 
         val_inputs = val_inputs.permute(2, 0, 1, 3, 4)
         val_inputs = torch.squeeze(val_inputs, 1)
-        #val_inputs = sigmoid(val_inputs)
 
         val_inputs = val_inputs.to(device)
-        _, val_outputs = model(val_inputs)
-        loss = criterion(val_outputs, val_inputs)
 
+        val_features_extracted, _ = unet(val_inputs)
+        
+        val_features_extracted = val_features_extracted.permute(2, 3, 0, 1)
+        val_features_extracted = torch.squeeze(val_features_extracted, 0)
+        
+        val_outputs = model(val_features_extracted)
+        
+        
+        val_outputs = sigmoid(val_outputs)
+
+        # For sigmoid
+        val_labels = val_targets
+
+        val_labels = val_labels.to(device)
+        val_labels = torch.unsqueeze(val_labels, 0).to(torch.float)
+        
+        loss = criterion(val_outputs, val_labels)
         val_total_loss += loss.item()
-
-        if(val_counter%70 == 0):            
-            val_inputs = val_inputs.to("cpu")
-            val_outputs = val_outputs.to("cpu")
-
-            val_inputs = val_inputs.detach().numpy()
-            val_outputs = val_outputs.detach().numpy()
-
-            columns = 2
-            rows = 1
-            
-            fig = plt.figure(figsize=(20, 20))
-            fig.add_subplot(rows, columns, 1)
-            plt.imshow(val_inputs[10][0][:,:], cmap='gray')
-            
-            fig.add_subplot(rows, columns, 2)
-            plt.imshow(val_outputs[10][0][:,:], cmap='gray')
-                
-            plt.savefig(epoch_outputs_folder + "/" + "val_counter" + str(val_counter) + ".png")
-            plt.close()
 
         val_counter += 1
 
@@ -247,27 +246,9 @@ indices_list = []
 for i in range(0,NUM_EPOCHS):
     indices_list.append(i)
 
+
 fig = plt.figure(figsize=(20, 20))
 plt.plot(indices_list, train_loss_array, label='train loss')
 plt.plot(indices_list, val_loss_array, label='val loss')
 plt.legend()
 plt.savefig(outputs_folder + "/" + "train_val_loss" + str(val_counter) + ".png")
-
-
-
-
-"""
-transforms = {
-                'Clip': {'amin': -150, 'amax': 250},
-
-                # Normalize so the values are between 0 and 1
-                'Normalize': {'bounds': [-150, 250]},
-
-                'Resize': {'height': 64, 'width': 64},
-
-                'Crop-Height' : {'begin': 16, 'end': 64},
-                'Crop-Width' : {'begin': 0, 'end': 64},
-
-                'Max-Layers' : {'max': 118}
-             }
-"""
